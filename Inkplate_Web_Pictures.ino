@@ -3,18 +3,13 @@
   load xkcd overnight
 */
 
-// Next 3 lines are a precaution, you can ignore those, and the example would also work without them
-#ifndef ARDUINO_INKPLATE10
-#error "Wrong board selection for this example, please select Inkplate 10 in the boards menu."
-#endif
-
-#include "HTTPClient.h"          //Include library for HTTPClient
-#include "Inkplate.h"            //Include Inkplate library to the sketch
-#include "WiFi.h"                //Include library for WiFi
+#include "HTTPClient.h"
+#include "Inkplate.h"
+#include "WiFi.h"
 #include "HTTPClient.h"
 RTC_DATA_ATTR int page = 1;
 
-Inkplate display(INKPLATE_1BIT); // Create an object on Inkplate library and also set library into 1 Bit mode (BW)
+Inkplate display(INKPLATE_1BIT);
 
 const char ssid[] = "Maine Volcano Observatory";    // Your WiFi SSID
 const char *password = "Eufm-Qmp2-rzrp-AgaL"; // Your WiFi password
@@ -25,12 +20,12 @@ void setup()
 {
     char[45] url; // "http://jeepingben.net/epaper-bmps/pagexx.png");
     char* imgbuffer;
-    
+
     reason == timer
       drawxkcd();
       gotosleep();
 
-    
+
     other
     if (!Inkplate::sdCardInit()) {
        display.println("Failed to initialize SD card");
@@ -56,7 +51,7 @@ void setup()
           gotosleep();
         }
     }
-    
+
     // Pad2 or power connected, etc
       page=1;
       wifiup();
@@ -73,8 +68,8 @@ void setup()
       download other pages
        WiFi.mode(WIFI_OFF);
       gotosleep();
-    
-      
+
+
 
     display.selectDisplayMode(INKPLATE_3BIT);
 
@@ -85,8 +80,8 @@ void setup()
         display.display();
     }
     display.display();
-    
- 
+
+
 }
 
 void showPage(int pagenum) {
@@ -129,7 +124,7 @@ void gotosleep() {
     display.setIntOutputInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 1, false, false, HIGH);
     display.setIntPinInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, RISING);
 
-    
+
     // Enable wakup from deep sleep on gpio 36
     //esp_sleep_enable_ext1_wakeup((1ULL << 36), ESP_EXT1_WAKEUP_ALL_LOW);
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_34, 1);
@@ -142,25 +137,25 @@ char* loadhttp(char* url) {
         // Get the response length and make sure it is not 0.
         int32_t len = http.getSize();
         if (len > 0) {
-         
+
           // BRD - need to buffer this stream + return char* - stream != char*!
           //   // read up to 128k byte
           char[128*1024] buff;
 int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
-          return http.getStreamPtr(); 
+          return http.getStreamPtr();
         }
     }
     return null;
 }
 void wifiup() {
-  
+
     int temperature;
     float voltage;
-    display.setTextSize(5); 
+    display.setTextSize(5);
     display.print("Connecting to WiFi...");
     display.partialUpdate();
     temperature = display.readTemperature(); // Read temperature from on-board temperature sensor
-    voltage = display.readBattery(); 
+    voltage = display.readBattery();
     display.print(voltage, 2); // Print battery voltage
     display.print('V');
     display.print(temperature, DEC); // Print temperature
