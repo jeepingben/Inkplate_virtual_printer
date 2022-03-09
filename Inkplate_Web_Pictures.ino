@@ -11,7 +11,7 @@
 #include "HTTPClient.h"          //Include library for HTTPClient
 #include "Inkplate.h"            //Include Inkplate library to the sketch
 #include "WiFi.h"                //Include library for WiFi
-
+#include "HTTPClient.h"
 RTC_DATA_ATTR int page = 1;
 
 Inkplate display(INKPLATE_1BIT); // Create an object on Inkplate library and also set library into 1 Bit mode (BW)
@@ -23,14 +23,20 @@ byte touchPadPin = 10;
 byte padStatus = 0;
 void setup()
 {
+    char[45] url; // "http://jeepingben.net/epaper-bmps/pagexx.png");
+    char* imgbuffer;
+    
     reason == timer
-      drawxkcd
-      wifidown
-      sleep
+      drawxkcd();
+      gotosleep();
 
     
     other
-    filesystem init
+    if (!Inkplate::sdCardInit()) {
+       display.println("Failed to initialize SD card");
+       drawxkcd();
+       gotosleep();
+    }
 
     padStatus &= display.readTouchpad(PAD1);
     padStatus &= (display.readTouchpad(PAD2) << 1);
@@ -44,59 +50,33 @@ void setup()
       }
     }
     if (padStatus & 4) { // pad3
+        if (page < 99) {
           page++;
           showpage(page);
           gotosleep();
+        }
     }
     
     // Pad2 or power connected, etc
       page=1;
       wifiup();
-      download page1
+      HTTPClient http;
+      // Set parameters to speed up the download process.
+      http.getStream().setNoDelay(true);
+      http.getStream().setTimeout(1);
+      sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
+      imgbuffer = loadhttp(url);
+      if (imgbuffer != null) {
+        display.selectDisplayMode(INKPLATE_3BIT);
         display
         save
       download other pages
-      wifi off
+       WiFi.mode(WIFI_OFF);
       gotosleep();
     
       
-    int temperature;
-    float voltage;
-    
-    display.begin();        // Init Inkplate library (you should call this function ONLY ONCE)
-    display.clearDisplay(); // Clear frame buffer of display
-    display.display();      // Put clear image on display
-    display.setTextSize(5); 
-    display.print("Connecting to WiFi...");
-    display.partialUpdate();
-    temperature = display.readTemperature(); // Read temperature from on-board temperature sensor
-    voltage = display.readBattery(); 
-    display.print(voltage, 2); // Print battery voltage
-    display.print('V');
-    display.print(temperature, DEC); // Print temperature
-    display.print('C');
-    display.partialUpdate();
 
-    // Connect to the WiFi network.
-    WiFi.mode(WIFI_MODE_STA);
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(500); //todo brd can this be a timer wait?
-        display.print(".");
-        display.partialUpdate();
-    }
-    display.println("\nWiFi OK! Downloading...");
-    display.partialUpdate();
     display.selectDisplayMode(INKPLATE_3BIT);
-
-    // Draw the second image from web, this time using a HTTPClient to fetch the response manually.
-    // Full color 24 bit images are large and take a long time to load, will take around 20 secs.
-    HTTPClient http;
-    // Set parameters to speed up the download process.
-    http.getStream().setNoDelay(true);
-    http.getStream().setTimeout(1);
-     
 
     if (!display.drawImage("https://jeepingben.net/epaper-bmps/page1.png", 0, 0, false, false))
     {
@@ -106,14 +86,32 @@ void setup()
     }
     display.display();
     
-    http.end();
-
-    WiFi.mode(WIFI_OFF);
-
-   
-    gotosleep();
+ 
 }
 
+void showPage(int pagenum) {
+  char* filename="pagexx.png";
+  filename[4]= '0' + (page / 10); // becomes unreadable for page > 99
+  filename[5]= '0' + (page % 10);
+  if (!display.drawImage(filename, 0, 0, false, false))
+  {
+        // If is something failed (wrong filename or format), write error message on the screen.
+        display.print("Image open error - cannot open ");
+        display.print(filename);
+  }
+  annotate();
+  display.display();
+}
+
+void drawxkcd() {
+    wifiup()
+    // draw xkcd image
+    // get alttext
+    // write alttext
+    annotate();
+    display.display();
+    WiFi.mode(WIFI_OFF);
+}
 void anotate() {
     display.setCursor(480, 790); // Set new print position (right above first touchpad)
     display.print('-');          // Print minus sign
@@ -137,8 +135,24 @@ void gotosleep() {
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_34, 1);
     esp_deep_sleep_start();
 }
-
-void wifiup () {
+char* loadhttp(char* url) {
+  http.begin(url);
+  if (httpCode == 200)
+    {
+        // Get the response length and make sure it is not 0.
+        int32_t len = http.getSize();
+        if (len > 0) {
+         
+          // BRD - need to buffer this stream + return char* - stream != char*!
+          //   // read up to 128k byte
+          char[128*1024] buff;
+int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+          return http.getStreamPtr(); 
+        }
+    }
+    return null;
+}
+void wifiup() {
   
     int temperature;
     float voltage;
