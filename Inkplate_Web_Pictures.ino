@@ -3,31 +3,39 @@
   load xkcd overnight
 */
 
-#include "HTTPClient.h"
 #include "Inkplate.h"
 #include "WiFi.h"
+#include "SdFat.h"
 #include "HTTPClient.h"
-RTC_DATA_ATTR int page = 1;
 
+RTC_DATA_ATTR int page = 1;
+SdFile file;
 Inkplate display(INKPLATE_1BIT);
 
-const char ssid[] = "Maine Volcano Observatory";    // Your WiFi SSID
-const char *password = "Eufm-Qmp2-rzrp-AgaL"; // Your WiFi password
+const char *ssid = "Maine Volcano Observatory";
+const char *password = "Eufm-Qmp2-rzrp-AgaL";
+uint8_t imgbuffer[102400];
+char url[45]; // "http://jeepingben.net/epaper-bmps/pagexx.png"
 
 byte touchPadPin = 10;
 byte padStatus = 0;
+void annotate() {
+    display.setCursor(480, 790); // Set new print position (right above first touchpad)
+    display.print('-');          // Print minus sign
+    display.setCursor(580, 790); // Set new print position (right above second touchpad)
+    display.print('0');          // Print zero
+    display.setCursor(680, 790); // Set new print position (right above third touchpad)
+    display.print('+');          // Print plus sign
+}
 void setup()
 {
-    char[45] url; // "http://jeepingben.net/epaper-bmps/pagexx.png");
-    char* imgbuffer;
-
-    reason == timer
+    int32_t imglen;
+    if (0) { //reason == timer
       drawxkcd();
       gotosleep();
-
-
-    other
-    if (!Inkplate::sdCardInit()) {
+    } else {}    //other
+    
+    if (!display.sdCardInit()) {
        display.println("Failed to initialize SD card");
        drawxkcd();
        gotosleep();
@@ -40,14 +48,14 @@ void setup()
     if (padStatus & 1) { //pad1
       if (page > 1) {
           page--;
-          showpage(page);
+          showPage(page);
           gotosleep();
       }
     }
     if (padStatus & 4) { // pad3
         if (page < 99) {
           page++;
-          showpage(page);
+          showPage(page);
           gotosleep();
         }
     }
@@ -55,17 +63,27 @@ void setup()
     // Pad2 or power connected, etc
       page=1;
       wifiup();
-      HTTPClient http;
-      // Set parameters to speed up the download process.
-      http.getStream().setNoDelay(true);
-      http.getStream().setTimeout(1);
-      sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
-      imgbuffer = loadhttp(url);
-      if (imgbuffer != null) {
-        display.selectDisplayMode(INKPLATE_3BIT);
-        display
-        save
-      download other pages
+      display.selectDisplayMode(INKPLATE_3BIT);
+
+      do {
+          sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
+          imglen = loadhttp(url);
+          if (page == 1) {
+              display.drawImage(imgbuffer, 0, 0, false, false);
+              annotate();
+              display.display();
+          }
+          file.rmRfStar();
+          if (!file.open(&url[33], O_WRITE)) {
+            display.println("SDCard file open error");
+            display.display();
+          } else {
+            file.write(imgbuffer, imglen);
+          }
+              
+             
+      } while(imglen > 0);
+      
        WiFi.mode(WIFI_OFF);
       gotosleep();
 
@@ -99,7 +117,7 @@ void showPage(int pagenum) {
 }
 
 void drawxkcd() {
-    wifiup()
+    wifiup();
     // draw xkcd image
     // get alttext
     // write alttext
@@ -107,14 +125,7 @@ void drawxkcd() {
     display.display();
     WiFi.mode(WIFI_OFF);
 }
-void anotate() {
-    display.setCursor(480, 790); // Set new print position (right above first touchpad)
-    display.print('-');          // Print minus sign
-    display.setCursor(580, 790); // Set new print position (right above second touchpad)
-    display.print('0');          // Print zero
-    display.setCursor(680, 790); // Set new print position (right above third touchpad)
-    display.print('+');          // Print plus sign
-}
+
 void gotosleep() {
 
    // Get current time
@@ -130,22 +141,23 @@ void gotosleep() {
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_34, 1);
     esp_deep_sleep_start();
 }
-char* loadhttp(char* url) {
+
+int32_t loadhttp(char* url) {
+        HTTPClient http;
+      // Set parameters to speed up the download process.
+      http.getStream().setNoDelay(true);
+      http.getStream().setTimeout(1);
   http.begin(url);
+  int httpCode = http.GET();
   if (httpCode == 200)
     {
         // Get the response length and make sure it is not 0.
         int32_t len = http.getSize();
-        if (len > 0) {
-
-          // BRD - need to buffer this stream + return char* - stream != char*!
-          //   // read up to 128k byte
-          char[128*1024] buff;
-int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
-          return http.getStreamPtr();
+        if (len > 0) {         
+          return http.getStreamPtr()->readBytes(imgbuffer, ((len > sizeof(imgbuffer)) ? sizeof(imgbuffer) : len));
         }
     }
-    return null;
+    return NULL;
 }
 void wifiup() {
 
