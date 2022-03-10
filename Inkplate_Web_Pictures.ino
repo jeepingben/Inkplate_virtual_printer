@@ -14,81 +14,126 @@ Inkplate display(INKPLATE_1BIT);
 
 const char *ssid = "Maine Volcano Observatory";
 const char *password = "Eufm-Qmp2-rzrp-AgaL";
-uint8_t imgbuffer[102400];
-char url[45]; // "http://jeepingben.net/epaper-bmps/pagexx.png"
+uint8_t imgbuffer[65535];
+char url[46]; // "https://jeepingben.net/epaper-bmps/pagexx.png"
 
 byte touchPadPin = 10;
-byte padStatus = 0;
+
 void annotate() {
-    display.setCursor(480, 790); // Set new print position (right above first touchpad)
-    display.print('-');          // Print minus sign
-    display.setCursor(580, 790); // Set new print position (right above second touchpad)
-    display.print('0');          // Print zero
-    display.setCursor(680, 790); // Set new print position (right above third touchpad)
-    display.print('+');          // Print plus sign
+  display.setTextColor(0, 7);
+    display.setCursor(10, 480); 
+    display.printf("%d", page - 1);    
+    display.setCursor(10, 580); 
+    display.print('0');         
+    display.setCursor(10, 680); 
+    display.printf("%d", page + 1);         
 }
 void setup()
 {
     int32_t imglen;
+    uint8_t padStatus = 0;  
+    display.digitalWriteInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 9, HIGH);
+    display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD1, INPUT);
+    display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD2, INPUT);
+    display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD3, INPUT);
+    
+    if (display.readTouchpad(PAD1)) {
+      padStatus != 1;
+    }
+    if (display.readTouchpad(PAD2)) {
+      padStatus != 2;
+    }
+    if (display.readTouchpad(PAD3)) {
+      padStatus |= 4;
+    }
+    display.begin();
+    display.setRotation(3);
+  
+  display.rtcClearAlarmFlag();  // Clear alarm flag from any previous alarm
+  display.rtcSetAlarm(99 /*sec*/, 99 /*min*/, 3 /*hour*/, 99 /*day*/, 99 /*weekday*/);
+  if (!display.rtcIsSet())      // Check if RTC is already is set. If ts not, set time and date
+  {
+    //  setTime(hour, minute, sec);
+    display.rtcSetTime(7, 26, 00); // 24H mode, ex. 6:54:00
+    //  setDate(weekday, day, month, yr);
+    display.rtcSetDate(4, 10, 3, 2022); // 0 for Sunday, ex. Saturday, 16.5.2020.
+
+    // display.rtcSetEpoch(1589610300); // Or use epoch for setting the time and date
+  }
+
+    
+    
+    display.clearDisplay();
+    display.display();
     if (0) { //reason == timer
       drawxkcd();
       gotosleep();
     } else {}    //other
-    
+
     if (!display.sdCardInit()) {
        display.println("Failed to initialize SD card");
-       drawxkcd();
+       display.partialUpdate();
+       //drawxkcd();
        gotosleep();
     }
-
-    padStatus &= display.readTouchpad(PAD1);
-    padStatus &= (display.readTouchpad(PAD2) << 1);
-    padStatus &= (display.readTouchpad(PAD3) << 2);
-
-    if (padStatus & 1) { //pad1
-      if (page > 1) {
+    
+    
+    
+    display.print(padStatus,DEC);
+    display.partialUpdate();
+    if ((padStatus & (byte)1) && page > 1) { //pad1
           page--;
-          showPage(page);
-          gotosleep();
-      }
     }
-    if (padStatus & 4) { // pad3
-        if (page < 99) {
+    if ((padStatus & (byte)4) && page < 99) { // pad3
           page++;
-          showPage(page);
-          gotosleep();
-        }
+    }
+
+    if (!(padStatus & 2)) {
+      showPage(page);
+      gotosleep();
     }
 
     // Pad2 or power connected, etc
       page=1;
       wifiup();
-      display.selectDisplayMode(INKPLATE_3BIT);
-
+      
+      file.rmRfStar();
       do {
+          imglen = 0;
           sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
+          display.println(url);
+          display.display();
           imglen = loadhttp(url);
-          if (page == 1) {
-              display.drawImage(imgbuffer, 0, 0, false, false);
-              annotate();
-              display.display();
-          }
-          file.rmRfStar();
-          if (!file.open(&url[33], O_WRITE)) {
+          
+          
+          if (imglen != 0) {
+          if (!file.open(&url[35], O_WRITE|O_CREAT)) {
             display.println("SDCard file open error");
+            display.println(&url[35]);
             display.display();
+            imglen = 0;
           } else {
             file.write(imgbuffer, imglen);
+            file.flush();
+            file.close();
           }
-              
+          if (page == 1) {
+              showPage(page);
+              //drawing PNG from the buffer isn't available see drawBitmapFromBuffer
+              //display.drawImage(imgbuffer,imglen, 0, 0, false, false);
+              //annotate();
+              //display.display();
+          }
+          page++;
+          }
              
       } while(imglen > 0);
       
-       WiFi.mode(WIFI_OFF);
+       
       gotosleep();
 
 
-
+/*
     display.selectDisplayMode(INKPLATE_3BIT);
 
     if (!display.drawImage("https://jeepingben.net/epaper-bmps/page1.png", 0, 0, false, false))
@@ -98,25 +143,31 @@ void setup()
         display.display();
     }
     display.display();
-
+*/
 
 }
 
 void showPage(int pagenum) {
-  char* filename="pagexx.png";
-  filename[4]= '0' + (page / 10); // becomes unreadable for page > 99
-  filename[5]= '0' + (page % 10);
+  char filename[12];
+  sprintf(filename, "page%d.png", pagenum);
+
+  display.selectDisplayMode(INKPLATE_3BIT);
   if (!display.drawImage(filename, 0, 0, false, false))
   {
+        if (page > 1) {
+          page--;
+        }
         // If is something failed (wrong filename or format), write error message on the screen.
         display.print("Image open error - cannot open ");
         display.print(filename);
   }
+
   annotate();
   display.display();
 }
 
 void drawxkcd() {
+    
     wifiup();
     // draw xkcd image
     // get alttext
@@ -127,22 +178,23 @@ void drawxkcd() {
 }
 
 void gotosleep() {
-
+    WiFi.mode(WIFI_OFF);
    // Get current time
    // set timer for xkcdtime - currenttime seconds
     // Setup mcp interrupts
+    for (int touchPadPin = 10; touchPadPin <=12; touchPadPin++) {
     display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, INPUT);
     display.setIntOutputInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 1, false, false, HIGH);
     display.setIntPinInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, RISING);
+    }
 
-
-    // Enable wakup from deep sleep on gpio 36
-    //esp_sleep_enable_ext1_wakeup((1ULL << 36), ESP_EXT1_WAKEUP_ALL_LOW);
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_34, 1);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_39, 0); // RTC
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_34, 1); // touch
     esp_deep_sleep_start();
 }
 
 int32_t loadhttp(char* url) {
+      int32_t res = 0;
         HTTPClient http;
       // Set parameters to speed up the download process.
       http.getStream().setNoDelay(true);
@@ -154,10 +206,12 @@ int32_t loadhttp(char* url) {
         // Get the response length and make sure it is not 0.
         int32_t len = http.getSize();
         if (len > 0) {         
-          return http.getStreamPtr()->readBytes(imgbuffer, ((len > sizeof(imgbuffer)) ? sizeof(imgbuffer) : len));
+          res = http.getStreamPtr()->readBytes(imgbuffer, ((len > sizeof(imgbuffer)) ? sizeof(imgbuffer) : len));
+          
         }
     }
-    return NULL;
+    http.end();
+          return res;
 }
 void wifiup() {
 
