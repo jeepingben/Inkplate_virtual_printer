@@ -31,23 +31,20 @@ void annotate() {
 void setup()
 {
     int32_t imglen;
-    byte padStatus = 0;  
+    byte padStatus = 0;
+
+    // Do just enough init to read pad status
     Wire.begin();
     display.digitalWriteInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 9, HIGH);
     display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD1, INPUT);
     display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD2, INPUT);
     display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD3, INPUT);
-    
-    if (display.readTouchpad(PAD1)) {
-      padStatus |= 1;
-    }
-    if (display.readTouchpad(PAD2)) {
-      padStatus |= 2;
-    }
-    if (display.readTouchpad(PAD3)) {
-      padStatus |= 4;
-    }
-    display.begin(); // Would like to do less than display.begin before reading touchpads but it then thinks pad3 is always pressed :-/
+    padStatus |= display.readTouchpad(PAD1);
+    padStatus |= display.readTouchpad(PAD2) << 1;
+    padStatus |= display.readTouchpad(PAD3) << 2;
+
+    // Show the user we're awake
+    display.begin();
     display.setRotation(3);
   
   display.rtcClearAlarmFlag();  // Clear alarm flag from any previous alarm
