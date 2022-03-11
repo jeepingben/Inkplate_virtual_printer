@@ -8,21 +8,26 @@
 #include "SdFat.h"
 #include "HTTPClient.h"
 
+#define NEWESTXKCD 0
+#define RANDOMXKCD 1
+
 RTC_DATA_ATTR int page = 1;
 SdFile file;
 Inkplate display(INKPLATE_1BIT);
 
 const char *ssid = "Maine Volcano Observatory";
 const char *password = "Eufm-Qmp2-rzrp-AgaL";
-uint8_t imgbuffer[65535];
+uint8_t imgbuffer[15535];
 char url[46]; // "https://jeepingben.net/epaper-bmps/pagexx.png"
 
 byte touchPadPin = 10;
 
 void annotate() {
   display.setTextColor(0, 7);
-    display.setCursor(10, 480); 
-    display.printf("%d", page - 1);    
+    display.setCursor(10, 480);
+    if (page != 1) {
+       display.printf("%d", page - 1);
+    }
     display.setCursor(10, 580); 
     display.print('0');         
     display.setCursor(10, 680); 
@@ -46,25 +51,25 @@ void setup()
     // Show the user we're awake
     display.begin();
     display.setRotation(3);
-  
+    display.clearDisplay();
+    display.display();
+    
   display.rtcClearAlarmFlag();  // Clear alarm flag from any previous alarm
   display.rtcSetAlarm(99 /*sec*/, 99 /*min*/, 3 /*hour*/, 99 /*day*/, 99 /*weekday*/);
   if (!display.rtcIsSet())      // Check if RTC is already is set. If ts not, set time and date
   {
     //  setTime(hour, minute, sec);
-    display.rtcSetTime(7, 26, 00); // 24H mode, ex. 6:54:00
+    display.rtcSetTime(7, 26, 00);
     //  setDate(weekday, day, month, yr);
-    display.rtcSetDate(4, 10, 3, 2022); // 0 for Sunday, ex. Saturday, 16.5.2020.
+    display.rtcSetDate(4, 10, 3, 2022); 
 
-    // display.rtcSetEpoch(1589610300); // Or use epoch for setting the time and date
   }
 
     
     
-    display.clearDisplay();
-    display.display();
-    if (0) { //reason == timer
-      drawxkcd();
+
+    if (1) { //reason == timer
+      drawxkcd(RANDOMXKCD);
       gotosleep();
     } else {}    //other
 
@@ -74,17 +79,11 @@ void setup()
        //drawxkcd();
        gotosleep();
     }
-    
-    
-    display.setTextSize(5);
-    display.print(padStatus,DEC);
-    display.partialUpdate();
-    gotosleep();
-    //################################################
-    if ((padStatus & (byte)1) && page > 1) { //pad1
+
+    if ((padStatus & 1) && page > 1) { //pad1
           page--;
     }
-    if ((padStatus & (byte)4) && page < 99) { // pad3
+    if ((padStatus & 4) && page < 99) { // pad3
           page++;
     }
 
@@ -101,8 +100,6 @@ void setup()
       do {
           imglen = 0;
           sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
-          display.println(url);
-          display.display();
           imglen = loadhttp(url);
           
           
@@ -121,8 +118,8 @@ void setup()
               showPage(page);
               //drawing PNG from the buffer isn't available see drawBitmapFromBuffer
               //display.drawImage(imgbuffer,imglen, 0, 0, false, false);
-              //annotate();
-              //display.display();
+              annotate();
+              display.display();
           }
           page++;
           }
@@ -166,15 +163,58 @@ void showPage(int pagenum) {
   display.display();
 }
 
-void drawxkcd() {
-    
+void drawxkcd(uint8_t mode) {
+    char *strmatch;
+    char *strend;
+    const char* imganchor="<img id=\"comic\" src=\"";
+    const char* altanchor="<p id=\"altText\">";
+    char xkcdurl[80] = "https://m.xkcd.com";// reused later as "https:";
     wifiup();
-    // draw xkcd image
-    // get alttext
-    // write alttext
+
+    if (mode == RANDOMXKCD) {
+      char rnd[8];
+      sprintf(rnd,"/%d/", random(2500));
+      strcat(xkcdurl, rnd);
+    }
+    loadhttp(xkcdurl);
+    strcpy(xkcdurl, "https:");
+    // parse out imgurl
+    strmatch = strstr((char*)imgbuffer,imganchor );
+    if (strmatch == NULL) {
+      display.println("Failed to find comic image in downloaded html");
+      return;
+    }
+    strmatch += strlen(imganchor);
+    
+    strend = strstr(strmatch, "\"");
+    if (strend == NULL || strend - strmatch >= 80) {
+        display.println("Failed to parse comic image url");
+        return;
+    }
+    strncat(xkcdurl, strmatch, (strend - strmatch));
+
+    display.selectDisplayMode(INKPLATE_3BIT);
+    display.setTextColor(0, 7);
+    display.drawImage(xkcdurl, 20, 100, false, false);
+
+    display.setCursor(10,1000);
+    
+    strmatch = strstr((char*)imgbuffer,altanchor );
+    if (strmatch == NULL) {
+      display.println("No alt-text today (parse error)");
+    } else {
+        strmatch += strlen(altanchor);
+      
+        strend = strstr(strmatch, "</p>");
+        if (strend == NULL) {
+            display.println("No alt-text today (terminator not found)");
+        }
+        display.setTextSize(3);
+        display.printf("%.*s", strend - strmatch, strmatch);
+    }
     annotate();
     display.display();
-    WiFi.mode(WIFI_OFF);
+
 }
 
 void gotosleep() {
@@ -182,7 +222,12 @@ void gotosleep() {
    // Get current time
    // set timer for xkcdtime - currenttime seconds
     // Setup mcp interrupts
-    for (int touchPadPin = 10; touchPadPin <=12; touchPadPin++) {
+    if (page != 1) {
+        display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD1, INPUT);
+        display.setIntOutputInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 1, false, false, HIGH);
+        display.setIntPinInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD1, RISING);
+    }
+    for (int touchPadPin = 11; touchPadPin <=12; touchPadPin++) {
     display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, INPUT);
     display.setIntOutputInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 1, false, false, HIGH);
     display.setIntPinInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, RISING);
@@ -207,7 +252,8 @@ int32_t loadhttp(char* url) {
         int32_t len = http.getSize();
         if (len > 0) {         
           res = http.getStreamPtr()->readBytes(imgbuffer, ((len > sizeof(imgbuffer)) ? sizeof(imgbuffer) : len));
-          
+           display.print("finished stream read");
+           display.partialUpdate();
         }
     }
     http.end();
