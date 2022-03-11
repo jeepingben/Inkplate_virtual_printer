@@ -10,6 +10,8 @@
 
 #define NEWESTXKCD 0
 #define RANDOMXKCD 1
+#define IMGBUFSIZE 65535
+#define HTMLBUFSIZE 8192
 
 RTC_DATA_ATTR int page = 1;
 SdFile file;
@@ -17,13 +19,20 @@ Inkplate display(INKPLATE_1BIT);
 
 const char *ssid = "Maine Volcano Observatory";
 const char *password = "Eufm-Qmp2-rzrp-AgaL";
-uint8_t imgbuffer[15535];
 char url[46]; // "https://jeepingben.net/epaper-bmps/pagexx.png"
 
 byte touchPadPin = 10;
 
 void annotate() {
   display.setTextColor(0, 7);
+  display.setTextSize(1);
+  display.setCursor(10, 0);
+
+    display.print(display.readBattery(), 2); // Print battery voltage
+    display.printf("V %dC",display.readTemperature());
+   
+  display.setTextSize(3);
+    
     display.setCursor(10, 480);
     if (page != 1) {
        display.printf("%d", page - 1);
@@ -35,7 +44,7 @@ void annotate() {
 }
 void setup()
 {
-    int32_t imglen;
+
     byte padStatus = 0;
 
     // Do just enough init to read pad status
@@ -67,11 +76,10 @@ void setup()
 
     
     
-
-    if (1) { //reason == timer
+    if(padStatus == 7) {
       drawxkcd(RANDOMXKCD);
       gotosleep();
-    } else {}    //other
+    } 
 
     if (!display.sdCardInit()) {
        display.println("Failed to initialize SD card");
@@ -96,52 +104,50 @@ void setup()
       page=1;
       wifiup();
       
-      file.rmRfStar();
-      do {
-          imglen = 0;
-          sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
-          imglen = loadhttp(url);
-          
-          
-          if (imglen != 0) {
-          if (!file.open(&url[35], O_WRITE|O_CREAT)) {
-            display.println("SDCard file open error");
-            display.println(&url[35]);
-            display.display();
-            imglen = 0;
-          } else {
-            file.write(imgbuffer, imglen);
-            file.flush();
-            file.close();
-          }
-          if (page == 1) {
-              showPage(page);
-              //drawing PNG from the buffer isn't available see drawBitmapFromBuffer
-              //display.drawImage(imgbuffer,imglen, 0, 0, false, false);
-              annotate();
-              display.display();
-          }
-          page++;
-          }
-             
-      } while(imglen > 0);
-      
+      getPages();
        
       gotosleep();
 
+}
 
-/*
-    display.selectDisplayMode(INKPLATE_3BIT);
-
-    if (!display.drawImage("https://jeepingben.net/epaper-bmps/page1.png", 0, 0, false, false))
-    {
-        // If is something failed (wrong filename or format), write error message on the screen.
-        display.println("Image open error");
-        display.display();
-    }
+void getPages() {
+  int32_t imglen;
+  uint8_t* imgbuffer;
+  imgbuffer = (uint8_t*)malloc(IMGBUFSIZE * sizeof(uint8_t));
+  if (imgbuffer == NULL) {
+    display.println("Malloc for page buffer failed");
     display.display();
-*/
-
+    return;
+  }
+  int8_t pagefetch=1;
+    file.rmRfStar();
+    do {
+        imglen = 0;
+        sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", pagefetch);
+        imglen = loadhttp(url, imgbuffer, IMGBUFSIZE);
+        
+        
+        if (imglen != 0) {
+        if (!file.open(&url[35], O_WRITE|O_CREAT)) {
+          display.println("SDCard file open error");
+          display.println(&url[35]);
+          display.display();
+          imglen = 0;
+        } else {
+          file.write(imgbuffer, imglen);
+          file.flush();
+          file.close();
+        }
+        if (pagefetch == 1) {
+            showPage(pagefetch);
+            //drawing PNG from the buffer isn't available see drawBitmapFromBuffer
+            //display.drawImage(imgbuffer,imglen, 0, 0, false, false);
+        }
+        pagefetch++;
+        }
+           
+    } while(imglen > 0);
+    free(imgbuffer);
 }
 
 void showPage(int pagenum) {
@@ -166,9 +172,16 @@ void showPage(int pagenum) {
 void drawxkcd(uint8_t mode) {
     char *strmatch;
     char *strend;
+    uint8_t* imgbuffer;
     const char* imganchor="<img id=\"comic\" src=\"";
     const char* altanchor="<p id=\"altText\">";
     char xkcdurl[80] = "https://m.xkcd.com";// reused later as "https:";
+    imgbuffer = (uint8_t*)malloc(HTMLBUFSIZE * sizeof(uint8_t));
+    if (imgbuffer == NULL) {
+    display.println("Malloc for html buffer failed");
+    display.partialUpdate();
+    return;
+  }
     wifiup();
 
     if (mode == RANDOMXKCD) {
@@ -176,19 +189,23 @@ void drawxkcd(uint8_t mode) {
       sprintf(rnd,"/%d/", random(2500));
       strcat(xkcdurl, rnd);
     }
-    loadhttp(xkcdurl);
+    loadhttp(xkcdurl, imgbuffer, HTMLBUFSIZE);
     strcpy(xkcdurl, "https:");
     // parse out imgurl
     strmatch = strstr((char*)imgbuffer,imganchor );
     if (strmatch == NULL) {
       display.println("Failed to find comic image in downloaded html");
+      display.partialUpdate();
+      free(imgbuffer);
       return;
     }
     strmatch += strlen(imganchor);
-    
+
     strend = strstr(strmatch, "\"");
     if (strend == NULL || strend - strmatch >= 80) {
         display.println("Failed to parse comic image url");
+        display.partialUpdate();
+        free(imgbuffer);
         return;
     }
     strncat(xkcdurl, strmatch, (strend - strmatch));
@@ -196,15 +213,15 @@ void drawxkcd(uint8_t mode) {
     display.selectDisplayMode(INKPLATE_3BIT);
     display.setTextColor(0, 7);
     display.drawImage(xkcdurl, 20, 100, false, false);
-
+    // display.drawImage(xkcdurl, Image::Format::PNG, Image::Position::Center, false, false);
     display.setCursor(10,1000);
-    
+
     strmatch = strstr((char*)imgbuffer,altanchor );
     if (strmatch == NULL) {
       display.println("No alt-text today (parse error)");
     } else {
         strmatch += strlen(altanchor);
-      
+
         strend = strstr(strmatch, "</p>");
         if (strend == NULL) {
             display.println("No alt-text today (terminator not found)");
@@ -212,9 +229,10 @@ void drawxkcd(uint8_t mode) {
         display.setTextSize(3);
         display.printf("%.*s", strend - strmatch, strmatch);
     }
+    free(imgbuffer);
     annotate();
     display.display();
-
+  
 }
 
 void gotosleep() {
@@ -238,12 +256,12 @@ void gotosleep() {
     esp_deep_sleep_start();
 }
 
-int32_t loadhttp(char* url) {
-      int32_t res = 0;
-        HTTPClient http;
-      // Set parameters to speed up the download process.
-      http.getStream().setNoDelay(true);
-      http.getStream().setTimeout(1);
+int32_t loadhttp(char* url, uint8_t* imgbuffer, int32_t maxsize) {
+  int32_t res = 0;
+  HTTPClient http;
+  // Set parameters to speed up the download process.
+  http.getStream().setNoDelay(true);
+  http.getStream().setTimeout(1);
   http.begin(url);
   int httpCode = http.GET();
   if (httpCode == 200)
@@ -251,9 +269,8 @@ int32_t loadhttp(char* url) {
         // Get the response length and make sure it is not 0.
         int32_t len = http.getSize();
         if (len > 0) {         
-          res = http.getStreamPtr()->readBytes(imgbuffer, ((len > sizeof(imgbuffer)) ? sizeof(imgbuffer) : len));
-           display.print("finished stream read");
-           display.partialUpdate();
+          res = http.getStreamPtr()->readBytes(imgbuffer, ((len > maxsize) ? maxsize : len));
+           
         }
     }
     http.end();
@@ -261,17 +278,11 @@ int32_t loadhttp(char* url) {
 }
 void wifiup() {
 
-    int temperature;
-    float voltage;
+
     display.setTextSize(5);
     display.print("Connecting to WiFi...");
     display.partialUpdate();
-    temperature = display.readTemperature(); // Read temperature from on-board temperature sensor
-    voltage = display.readBattery();
-    display.print(voltage, 2); // Print battery voltage
-    display.print('V');
-    display.print(temperature, DEC); // Print temperature
-    display.print('C');
+
     display.partialUpdate();
 
     // Connect to the WiFi network.
