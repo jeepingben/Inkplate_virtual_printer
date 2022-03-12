@@ -14,6 +14,8 @@
 #define HTMLBUFSIZE 8192
 
 RTC_DATA_ATTR int page = 1;
+RTC_DATA_ATTR int lastpage = 99;
+
 SdFile file;
 Inkplate display(INKPLATE_1BIT);
 
@@ -27,20 +29,18 @@ void annotate() {
   display.setTextColor(0, 7);
   display.setTextSize(1);
   display.setCursor(10, 0);
-
+  display.rtcGetRtcData();  
     display.print(display.readBattery(), 2); // Print battery voltage
-    display.printf("V %dC",display.readTemperature());
+    display.printf("V %dC %02d:%02d",display.readTemperature(), display.rtcGetHour(), display.rtcGetMinute());
    
   display.setTextSize(3);
     
     display.setCursor(10, 480);
-    if (page != 1) {
-       display.printf("%d", page - 1);
-    }
+    display.printf("%d", page == 1?1:page - 1);
     display.setCursor(10, 580); 
     display.print('0');         
     display.setCursor(10, 680); 
-    display.printf("%d", page + 1);         
+    display.printf("%d", page == lastpage?lastpage:page + 1);         
 }
 void setup()
 {
@@ -59,22 +59,24 @@ void setup()
 
     // Show the user we're awake
     display.begin();
+    display.preloadScreen();
     display.setRotation(3);
+    
     display.clearDisplay();
-    display.display();
+    display.fillCircle(random(500), random(500), 50, BLACK);
+    display.partialUpdate(true);
+    //display.display();
     
-  display.rtcClearAlarmFlag();  // Clear alarm flag from any previous alarm
-  display.rtcSetAlarm(99 /*sec*/, 99 /*min*/, 3 /*hour*/, 99 /*day*/, 99 /*weekday*/);
-  if (!display.rtcIsSet())      // Check if RTC is already is set. If ts not, set time and date
-  {
-    //  setTime(hour, minute, sec);
-    display.rtcSetTime(7, 26, 00);
-    //  setDate(weekday, day, month, yr);
-    display.rtcSetDate(4, 10, 3, 2022); 
 
+  
+
+
+  if (display.rtcCheckAlarmFlag()) {
+    display.rtcClearAlarmFlag();
+    drawxkcd(NEWESTXKCD); // Check day of week to see if it is an xkcd day?
+    gotosleep();
   }
-
-    
+  display.rtcSetAlarm(99 /*sec*/, 99 /*min*/, 3 /*hour*/, 99 /*day*/, 99 /*weekday*/);
     
     if(padStatus == 7) {
       drawxkcd(RANDOMXKCD);
@@ -84,7 +86,7 @@ void setup()
     if (!display.sdCardInit()) {
        display.println("Failed to initialize SD card");
        display.partialUpdate();
-       //drawxkcd();
+       drawxkcd(RANDOMXKCD);
        gotosleep();
     }
 
@@ -119,34 +121,35 @@ void getPages() {
     display.display();
     return;
   }
-  int8_t pagefetch=1;
+  lastpage=1;
     file.rmRfStar();
     do {
         imglen = 0;
-        sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", pagefetch);
+        sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
         imglen = loadhttp(url, imgbuffer, IMGBUFSIZE);
         
         
         if (imglen != 0) {
-        if (!file.open(&url[35], O_WRITE|O_CREAT)) {
-          display.println("SDCard file open error");
-          display.println(&url[35]);
-          display.display();
-          imglen = 0;
-        } else {
-          file.write(imgbuffer, imglen);
-          file.flush();
-          file.close();
-        }
-        if (pagefetch == 1) {
-            showPage(pagefetch);
-            //drawing PNG from the buffer isn't available see drawBitmapFromBuffer
-            //display.drawImage(imgbuffer,imglen, 0, 0, false, false);
-        }
-        pagefetch++;
+          if (!file.open(&url[35], O_WRITE|O_CREAT)) {
+            display.println("SDCard file open error");
+            display.println(&url[35]);
+            display.display();
+            imglen = 0;
+          } else {
+            file.write(imgbuffer, imglen);
+            file.flush();
+            file.close();
+          }
+          if (lastpage == 1) {
+              showPage(lastpage);
+              //drawing PNG from the buffer isn't available see drawBitmapFromBuffer
+              //display.drawImage(imgbuffer,imglen, 0, 0, false, false);
+          }
+          lastpage++;
         }
            
     } while(imglen > 0);
+    lastpage -= 1;
     free(imgbuffer);
 }
 
@@ -172,14 +175,16 @@ void showPage(int pagenum) {
 void drawxkcd(uint8_t mode) {
     char *strmatch;
     char *strend;
+    char *strptr;
     uint8_t* imgbuffer;
-    const char* imganchor="<img id=\"comic\" src=\"";
-    const char* altanchor="<p id=\"altText\">";
+    const char imganchor[]="<img id=\"comic\" src=\"";
+    const char altanchor[]="<p id=\"altText\">";
+    const char htmlcode[] = "&#39;"; // There are many apostrophes that make alt text hard to read
     char xkcdurl[80] = "https://m.xkcd.com";// reused later as "https:";
     imgbuffer = (uint8_t*)malloc(HTMLBUFSIZE * sizeof(uint8_t));
     if (imgbuffer == NULL) {
-    display.println("Malloc for html buffer failed");
-    display.partialUpdate();
+      display.println("Malloc for html buffer failed");
+      display.partialUpdate();
     return;
   }
     wifiup();
@@ -212,10 +217,12 @@ void drawxkcd(uint8_t mode) {
 
     display.selectDisplayMode(INKPLATE_3BIT);
     display.setTextColor(0, 7);
+    
+    //position is offset significantly to the right with this call as of 3/22
+    //display.drawImage(xkcdurl, Image::Format::PNG, Image::Position::Center, false, false);
     display.drawImage(xkcdurl, 20, 100, false, false);
-    // display.drawImage(xkcdurl, Image::Format::PNG, Image::Position::Center, false, false);
+    
     display.setCursor(10,1000);
-
     strmatch = strstr((char*)imgbuffer,altanchor );
     if (strmatch == NULL) {
       display.println("No alt-text today (parse error)");
@@ -226,29 +233,33 @@ void drawxkcd(uint8_t mode) {
         if (strend == NULL) {
             display.println("No alt-text today (terminator not found)");
         }
+        *strend = '\0';
         display.setTextSize(3);
-        display.printf("%.*s", strend - strmatch, strmatch);
+
+        // un-escape apostrophtes (modifies alt-text buffer)
+        strptr = strstr(strmatch, htmlcode );
+        while (strptr != NULL) {
+          strptr[0] = '\0';
+          display.printf("%s'", strmatch);
+          strmatch = strptr + 5; //Length of htmlcode 
+          strptr = strstr(strmatch, htmlcode );
+        }
+        display.print(strmatch);
     }
     free(imgbuffer);
     annotate();
     display.display();
-  
 }
 
 void gotosleep() {
     WiFi.mode(WIFI_OFF);
-   // Get current time
-   // set timer for xkcdtime - currenttime seconds
+   
     // Setup mcp interrupts
-    if (page != 1) {
-        display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD1, INPUT);
-        display.setIntOutputInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 1, false, false, HIGH);
-        display.setIntPinInternal(MCP23017_INT_ADDR, display.mcpRegsInt, PAD1, RISING);
-    }
-    for (int touchPadPin = 11; touchPadPin <=12; touchPadPin++) {
-    display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, INPUT);
-    display.setIntOutputInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 1, false, false, HIGH);
-    display.setIntPinInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, RISING);
+    
+    for (int touchPadPin = 10; touchPadPin <=12; touchPadPin++) {
+      display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, INPUT);
+      display.setIntOutputInternal(MCP23017_INT_ADDR, display.mcpRegsInt, 1, false, false, HIGH);
+      display.setIntPinInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, RISING);
     }
 
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_39, 0); // RTC
@@ -269,16 +280,16 @@ int32_t loadhttp(char* url, uint8_t* imgbuffer, int32_t maxsize) {
         // Get the response length and make sure it is not 0.
         int32_t len = http.getSize();
         if (len > 0) {         
-          res = http.getStreamPtr()->readBytes(imgbuffer, ((len > maxsize) ? maxsize : len));
-           
+          res = http.getStreamPtr()->readBytes(imgbuffer, ((len > maxsize) ? maxsize : len));  
         }
     }
     http.end();
-          return res;
+    return res;
 }
+
 void wifiup() {
 
-
+    uint8_t attempts = 0;
     display.setTextSize(5);
     display.print("Connecting to WiFi...");
     display.partialUpdate();
@@ -288,11 +299,16 @@ void wifiup() {
     // Connect to the WiFi network.
     WiFi.mode(WIFI_MODE_STA);
     WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED)
+    while (WiFi.status() != WL_CONNECTED && attempts < 20)
     {
         delay(500); //todo brd can this be a timer wait?
         display.print(".");
         display.partialUpdate();
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        display.print("Failed to connect to wifi");
+        display.partialUpdate();
+        gotosleep();
     }
     display.println("\nWiFi OK! Downloading...");
     display.partialUpdate();
