@@ -23,8 +23,6 @@ const char *ssid = "Maine Volcano Observatory";
 const char *password = "Eufm-Qmp2-rzrp-AgaL";
 char url[46]; // "https://jeepingben.net/epaper-bmps/pagexx.png"
 
-byte touchPadPin = 10;
-
 void annotate() {
   display.setTextColor(0, 7);
   display.setTextSize(1);
@@ -40,7 +38,7 @@ void annotate() {
     display.setCursor(10, 580); 
     display.print('0');         
     display.setCursor(10, 680); 
-    display.printf("%d", page == lastpage?lastpage:page + 1);         
+    display.printf("%d", page <= lastpage?lastpage:page + 1);         
 }
 void setup()
 {
@@ -93,7 +91,7 @@ void setup()
     if ((padStatus & 1) && page > 1) { //pad1
           page--;
     }
-    if ((padStatus & 4) && page < 99) { // pad3
+    if ((padStatus & 4) && page < lastpage) { // pad3
           page++;
     }
 
@@ -122,10 +120,10 @@ void getPages() {
     return;
   }
   lastpage=1;
-    file.rmRfStar();
+   // file.rmRfStar(); DOES NOT WORK
     do {
         imglen = 0;
-        sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", page);
+        sprintf(url, "https://jeepingben.net/epaper-bmps/page%d.png", lastpage);
         imglen = loadhttp(url, imgbuffer, IMGBUFSIZE);
         
         
