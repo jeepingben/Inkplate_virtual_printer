@@ -11,7 +11,7 @@
 
 #define NEWESTXKCD 0
 #define RANDOMXKCD 1
-#define IMGBUFSIZE 65535
+#define IMGBUFSIZE 102400
 #define HTMLBUFSIZE 8192
 
 #define LOADING { \
@@ -120,11 +120,12 @@ void annotate() {
    
     display.setTextSize(3);
     display.setCursor(10, 480);
+    
     display.printf("%d", page == 1?1:page - 1);
-    display.setCursor(10, 580); 
-    display.print('0');     
+    display.setCursor(10, 580);
+    display.print('0');    
     display.setCursor(10, 680); 
-    display.printf("%d", page < lastpage?page + 1:lastpage);         
+    display.printf("%d", (page < lastpage)?(page + 1):lastpage);         
 }
 
 void showPage(int pagenum, uint8_t do_annotate = 1) {
@@ -219,9 +220,9 @@ void setup()
  * pages and saving them to SDcard
  */
 void getPages() {
-  int32_t imglen;
+  int32_t imglen = 0;
   uint8_t* imgbuffer;
-  imgbuffer = (uint8_t*)malloc(IMGBUFSIZE * sizeof(uint8_t));
+  imgbuffer = (uint8_t*)ps_malloc(IMGBUFSIZE * sizeof(uint8_t));
   if (imgbuffer == NULL) {
     display.println("Malloc for page buffer failed");
     display.display();
@@ -230,12 +231,14 @@ void getPages() {
   lastpage=1;
    // file.rmRfStar(); DOES NOT WORK
     do {
-        imglen = 0;
         sprintf(url, "%s/page%d.png", PAGEBASEURL, lastpage);
         imglen = loadhttp(url, imgbuffer, IMGBUFSIZE);
         
-        
         if (imglen != 0) {
+          if (lastpage == 1) {
+              display.selectDisplayMode(INKPLATE_3BIT);
+              display.drawPngFromBuffer(imgbuffer, 0, 0, imglen,false, false);
+          }
           if (!file.open(strrchr(url,'/'), O_WRITE|O_CREAT)) {
             display.println("SDCard file open error");
             display.println(strrchr(url, '/'));
@@ -246,18 +249,14 @@ void getPages() {
             file.flush();
             file.close();
           }
-          if (lastpage == 1) {
-              //drawing PNG from the buffer isn't available see drawBitmapFromBuffer
-              //display.drawImage(imgbuffer,imglen, 0, 0, false, false);
-              showPage(lastpage, 0);
-          }
-          lastpage++;
+         
+          lastpage += 1;
         }
-           
     } while(imglen > 0);
     lastpage -= 1;
     free(imgbuffer);
     annotate();
+    display.display();
 }
 
 /* load a great comic that happens to look good on an epaper display 
