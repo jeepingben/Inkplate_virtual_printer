@@ -258,7 +258,19 @@ void getPages() {
     annotate();
     display.display();
 }
+/** Replace all instances of an html code with a single character in the passed string
+ */
+void htmlunescape(char* string, const char* htmlcode, const char replacement) {
 
+        char* strptr = strstr(string, htmlcode );
+          // un-escape apostrophtes (modifies alt-text buffer)
+        uint8_t code_len = strlen(htmlcode);
+        while (strptr != NULL) {
+          strptr[0] = replacement;
+          memmove(&strptr[1], &strptr[code_len], strlen(&strptr[code_len]) + 1);
+          strptr = strstr(strptr, htmlcode );
+        }
+}
 /* load a great comic that happens to look good on an epaper display 
  *  mode random/newest
  */
@@ -270,7 +282,6 @@ void drawxkcd(uint8_t mode) {
     const char imganchor[]="<img id=\"comic\" src=\"";
     const char altanchor[]="<p id=\"altText\">";
     const char titleanchor[]="alt=\"";
-    const char htmlcode[] = "&#39;"; // There are many apostrophes that make alt text hard to read
     char xkcdurl[80] = "https://m.xkcd.com/";// reused later for image url";
     imgbuffer = (uint8_t*)malloc(HTMLBUFSIZE * sizeof(uint8_t));
     if (imgbuffer == NULL) {
@@ -329,18 +340,18 @@ void drawxkcd(uint8_t mode) {
         if (strend == NULL) {
             display.println("No alt-text today (terminator not found)");
         }
-        *strend = '\0';
-        display.setTextSize(3);
+        else
+        {
+          *strend = '\0';
+          display.setTextSize(3);
 
-        // un-escape apostrophtes (modifies alt-text buffer)
-        strptr = strstr(strmatch, htmlcode );
-        while (strptr != NULL) {
-          strptr[0] = '\0';
-          display.printf("%s'", strmatch);
-          strmatch = strptr + 5; //Length of htmlcode 
-          strptr = strstr(strmatch, htmlcode );
+          // un-escape html chars (modifies alt-text buffer)
+          htmlunescape(strmatch, "&#39;", '\'');
+          htmlunescape(strmatch, "&amp;", '&');
+          htmlunescape(strmatch, "&quot;", '"');
+
+          display.print(strmatch);
         }
-        display.print(strmatch);
     }
     free(imgbuffer);
     annotate();
