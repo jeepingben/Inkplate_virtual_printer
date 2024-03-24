@@ -363,9 +363,11 @@ void drawxkcd(uint8_t mode) {
  */
 void gotosleep() {
     WiFi.mode(WIFI_OFF);
-    if (display.rtcIsSet()) {
-        display.rtcSetAlarm(00 /*sec*/, 00 /*min*/, 3 /*hour*/, 99 /*day*/, 99 /*weekday*/);
-    }   
+    if (!display.rtcIsSet()) {
+      configTime(GMT_OFFSET_SECS, DAYLIGHT_SAVINGS_OFFSET_SECS, "time.nist.gov", "0.pool.ntp.org", "1.pool.ntp.org");
+    }
+    display.rtcSetAlarm(00 /*sec*/, 00 /*min*/, 3 /*hour*/, 99 /*day*/, 99 /*weekday*/);
+
     // Setup mcp interrupts
     for (int touchPadPin = 10; touchPadPin <=12; touchPadPin++) {
       display.pinModeInternal(MCP23017_INT_ADDR, display.mcpRegsInt, touchPadPin, INPUT);
