@@ -1,0 +1,6 @@
+
+const char *ssid = "YOUR WIFI SSID";
+const char *password = "YOUR WIFI PASSWORD";
+#define PAGEBASEURL "https://yourserver/epaper-bmps"
+#define GMT_OFFSET_SECS  <YOUR TIMEZONE> * 60 * 60
+#define DAYLIGHT_SAVINGS_OFFSET_SECS 3600
